@@ -3,7 +3,6 @@ name: Debug build
 on:
   push:
     branches:
-      - stable-next
       - main-next
       - dev-next
     paths-ignore:
@@ -12,7 +11,6 @@ on:
       - '!.github/workflows/debug.yml'
   pull_request:
     branches:
-      - stable-next
       - main-next
       - dev-next
 
@@ -22,74 +20,67 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
+        uses: actions/checkout@3df4ab11eba7bda6032a0b82a6bb43b11571feac # v4
         with:
           fetch-depth: 0
+      - name: Get latest go version
+        id: version
+        run: |
+          echo go_version=$(curl -s https://raw.githubusercontent.com/actions/go-versions/main/versions-manifest.json | grep -oE '"version": "[0-9]{1}.[0-9]{1,}(.[0-9]{1,})?"' | head -1 | cut -d':' -f2 | sed 's/ //g; s/"//g') >> $GITHUB_OUTPUT
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v4
         with:
-          go-version: ^1.23
+          go-version: ${{ steps.version.outputs.go_version }}
+      - name: Add cache to Go proxy
+        run: |
+          version=`git rev-parse HEAD`
+          mkdir build
+          pushd build
+          go mod init build
+          go get -v github.com/sagernet/sing-box@$version
+          popd
+        continue-on-error: true
       - name: Run Test
         run: |
           go test -v ./...
-  build_go120:
-    name: Debug build (Go 1.20)
+  build_go118:
+    name: Debug build (Go 1.18)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
+        uses: actions/checkout@3df4ab11eba7bda6032a0b82a6bb43b11571feac # v4
         with:
           fetch-depth: 0
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v4
         with:
-          go-version: ~1.20
+          go-version: 1.18.10
       - name: Cache go module
-        uses: actions/cache@v4
+        uses: actions/cache@v3
         with:
           path: |
             ~/go/pkg/mod
-          key: go120-${{ hashFiles('**/go.sum') }}
+          key: go118-${{ hashFiles('**/go.sum') }}
       - name: Run Test
-        run: make ci_build_go120
-  build_go121:
+        run: make ci_build_go118
+  build_go120:
     name: Debug build (Go 1.21)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
+        uses: actions/checkout@3df4ab11eba7bda6032a0b82a6bb43b11571feac # v4
         with:
           fetch-depth: 0
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v4
         with:
-          go-version: ~1.21
+          go-version: 1.21.2
       - name: Cache go module
-        uses: actions/cache@v4
+        uses: actions/cache@v3
         with:
           path: |
             ~/go/pkg/mod
-          key: go121-${{ hashFiles('**/go.sum') }}
-      - name: Run Test
-        run: make ci_build
-  build_go122:
-    name: Debug build (Go 1.22)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
-        with:
-          fetch-depth: 0
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ~1.22
-      - name: Cache go module
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-          key: go122-${{ hashFiles('**/go.sum') }}
+          key: go118-${{ hashFiles('**/go.sum') }}
       - name: Run Test
         run: make ci_build
   cross:
@@ -195,7 +186,8 @@ jobs:
           - name: freebsd-arm64
             goos: freebsd
             goarch: arm64
-      fail-fast: true
+
+      fail-fast: false
     runs-on: ubuntu-latest
     env:
       GOOS: ${{ matrix.goos }}
@@ -207,13 +199,25 @@ jobs:
       TAGS: with_clash_api,with_quic
     steps:
       - name: Checkout
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
+      - name: Get latest go version
+        id: version
+        run: |
+          echo go_version=$(curl -s https://raw.githubusercontent.com/actions/go-versions/main/versions-manifest.json | grep -oE '"version": "[0-9]{1}.[0-9]{1,}(.[0-9]{1,})?"' | head -1 | cut -d':' -f2 | sed 's/ //g; s/"//g') >> $GITHUB_OUTPUT
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v4
         with:
-          go-version: ^1.21
+          go-version: ${{ steps.version.outputs.go_version }}
       - name: Build
         id: build
-        run: make
+        run: |
+          cd ./cmd/sing-box
+          go build -v -tags with_clash_api,with_quic,with_dhcp,with_grpc,with_wireguard,with_ech,with_utls,with_reality_server,with_acme,with_v2ray_api,with_gvisor #  with_shadowsocksr,
+          # make
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: sing-box-1.11.0-alpha.18-${{ matrix.name }}
+          path: ./cmd/sing-box/sing-box*
